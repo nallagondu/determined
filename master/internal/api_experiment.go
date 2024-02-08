@@ -2,7 +2,6 @@ package internal
 
 import (
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -147,14 +146,14 @@ func isActiveExperimentState(state experimentv1.State) bool {
 // Return a single experiment with enriched state, if the user can access it.
 func (a *apiServer) getExperiment(
 	ctx context.Context, curUser model.User, experimentID int,
-) (*experimentv1.Experiment, error) {
+) (*experimentv1.Experiment, *structpb.Struct, error) {
 	return a.getExperimentTx(ctx, db.Bun(), curUser, experimentID)
 }
 
 // Return a single experiment with enriched state, if the user can access it.
 func (a *apiServer) getExperimentTx(
 	ctx context.Context, idb bun.IDB, curUser model.User, experimentID int,
-) (*experimentv1.Experiment, error) {
+) (*experimentv1.Experiment, *structpb.Struct, error) {
 	expNotFound := api.NotFoundErrs("experiment", fmt.Sprint(experimentID), true)
 	exp := &experimentv1.Experiment{}
 	expMap := map[string]interface{}{}
@@ -205,12 +204,23 @@ func (a *apiServer) getExperimentTx(
 	`
 	err := db.MatchSentinelError(idb.NewRaw(query, experimentID, experimentID).Scan(ctx, &expMap))
 	if errors.Is(err, db.ErrNotFound) {
-		return nil, expNotFound
+		return nil, nil, expNotFound
 	} else if err != nil {
-		return nil, errors.Wrapf(err, "error fetching experiment from database: %d", experimentID)
+		return nil, nil, errors.Wrapf(err, "error fetching experiment from database: %d", experimentID)
 	}
+
+	configString, ok := expMap["config"].(string)
+	if !ok {
+		return nil, nil, fmt.Errorf("expected string config type")
+	}
+	config := &structpb.Struct{}
+	if err := config.UnmarshalJSON([]byte(configString)); err != nil {
+		return nil, nil, fmt.Errorf("unmarshaling json config string %s: %w", configString, err)
+	}
+	delete(expMap, "config")
+
 	// Cast string -> []byte `ParseMapToProto` magic.
-	jsonFields := []string{"config", "trial_ids", "labels"}
+	jsonFields := []string{"trial_ids", "labels"}
 	for _, field := range jsonFields {
 		switch sVal := expMap[field].(type) {
 		case string:
@@ -218,23 +228,23 @@ func (a *apiServer) getExperimentTx(
 		}
 	}
 	if err := db.ParseMapToProto(expMap, exp); err != nil {
-		return nil, fmt.Errorf("failed to parse map into proto: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse map into proto: %w", err)
 	}
 
-	modelExp, err := model.ExperimentFromProto(exp)
+	modelExp, err := model.ExperimentFromProto(exp, config)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if authErr := experiment.AuthZProvider.Get().
 		CanGetExperiment(ctx, curUser, modelExp); authErr != nil {
-		return nil, authz.SubIfUnauthorized(authErr, expNotFound)
+		return nil, nil, authz.SubIfUnauthorized(authErr, expNotFound)
 	}
 
 	if err = a.enrichExperimentStateTx(ctx, idb, exp); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return exp, nil
+	return exp, config, nil
 }
 
 func (a *apiServer) getExperimentAndCheckCanDoActions(
@@ -252,7 +262,7 @@ func (a *apiServer) GetSearcherEvents(
 	if err != nil {
 		return nil, err
 	}
-	exp, err := a.getExperiment(ctx, *curUser, int(req.ExperimentId))
+	exp, _, err := a.getExperiment(ctx, *curUser, int(req.ExperimentId))
 	if err != nil {
 		return nil, err
 	}
@@ -331,15 +341,14 @@ func (a *apiServer) GetExperiment(
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get the user: %s", err)
 	}
-	exp, err := a.getExperiment(ctx, *user, int(req.ExperimentId))
+	exp, config, err := a.getExperiment(ctx, *user, int(req.ExperimentId))
 	if err != nil {
 		return nil, err
 	}
 
-	// Update this when we remove the proto type.
 	resp := apiv1.GetExperimentResponse{
 		Experiment: exp,
-		Config:     exp.Config, //nolint:staticcheck
+		Config:     config,
 	}
 
 	// Only continue to add a job summary if it's an active experiment.
@@ -572,7 +581,6 @@ func getExperimentColumns(q *bun.SelectQuery) *bun.SelectQuery {
 		ColumnExpr("w.name AS workspace_name").
 		ColumnExpr("(w.archived OR p.archived) AS parent_archived").
 		ColumnExpr("p.user_id AS project_owner_id").
-		Column("e.config").
 		Column("e.checkpoint_size").
 		Column("e.checkpoint_count").
 		Column("e.unmanaged").
@@ -1089,11 +1097,11 @@ func (a *apiServer) PatchExperiment(
 	if err != nil {
 		return nil, err
 	}
-	exp, err := a.getExperiment(ctx, *curUser, int(req.Experiment.Id))
+	exp, config, err := a.getExperiment(ctx, *curUser, int(req.Experiment.Id))
 	if err != nil {
 		return nil, err
 	}
-	modelExp, err := model.ExperimentFromProto(exp)
+	modelExp, err := model.ExperimentFromProto(exp, config)
 	if err != nil {
 		return nil, err
 	}
@@ -1400,7 +1408,7 @@ func (a *apiServer) createUnmanagedExperimentTx(
 		return nil, fmt.Errorf("failed to make new unmanaged experiment: %w", err)
 	}
 
-	protoExp, err := a.getExperimentTx(ctx, idb, *user, e.ID)
+	protoExp, _, err := a.getExperimentTx(ctx, idb, *user, e.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get experiment: %w", err)
 	}
@@ -1610,7 +1618,7 @@ func (a *apiServer) ContinueExperiment(
 		return nil, status.Errorf(codes.Internal, "failed to activate experiment: %s", err)
 	}
 
-	protoExp, err := a.getExperiment(ctx, *user, int(req.Id))
+	protoExp, _, err := a.getExperiment(ctx, *user, int(req.Id))
 	if err != nil {
 		return nil, err
 	}
@@ -1630,13 +1638,12 @@ func (a *apiServer) CreateExperiment(
 
 	if req.ParentId != 0 {
 		// Can't use getExperimentAndCheckDoActions since model.Experiment doesn't have ParentArchived.
-		var parentExp *experimentv1.Experiment
-		parentExp, err = a.getExperiment(ctx, *user, int(req.ParentId))
+		parentExp, config, err := a.getExperiment(ctx, *user, int(req.ParentId))
 		if err != nil {
 			return nil, err
 		}
 		var modelExp *model.Experiment
-		modelExp, err = model.ExperimentFromProto(parentExp)
+		modelExp, err = model.ExperimentFromProto(parentExp, config)
 		if err != nil {
 			return nil, err
 		}
@@ -1706,7 +1713,7 @@ func (a *apiServer) CreateExperiment(
 		}
 	}
 
-	protoExp, err := a.getExperiment(ctx, *user, e.ID)
+	protoExp, _, err := a.getExperiment(ctx, *user, e.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -2624,7 +2631,7 @@ func (a *apiServer) SearchExperiments(
 				) sub_tasks)) AS task_ids`).
 		ColumnExpr("proto_time(trials.start_time) AS start_time").
 		ColumnExpr("proto_time(trials.end_time) AS end_time").
-		Column("trials.restarts").
+		ColumnExpr("LEAST(trials.restarts, (config->>'max_restarts')::int) AS restarts").
 		ColumnExpr("new_ckpt.uuid AS warm_start_checkpoint_uuid").
 		ColumnExpr("trials.checkpoint_size AS total_checkpoint_size").
 		ColumnExpr(experiment.ProtoStateDBCaseString(trialv1.State_value, "trials.state", "state",
@@ -2648,6 +2655,7 @@ func (a *apiServer) SearchExperiments(
 		ColumnExpr("null::jsonb AS wall_clock_time").
 		Column("searcher_metric_value").
 		Column("trials.external_trial_id").
+		Join("JOIN experiments e ON trials.experiment_id = e.id").
 		Join("LEFT JOIN validations bv ON trials.best_validation_id = bv.id").
 		Join("LEFT JOIN validations lv ON trials.latest_validation_id = lv.id").
 		Join("LEFT JOIN checkpoints_v2 new_ckpt ON new_ckpt.id = trials.warm_start_checkpoint_id").
@@ -2665,22 +2673,12 @@ func (a *apiServer) SearchExperiments(
 		trialsByExperimentID[trial.ExperimentId] = trial
 	}
 	for _, experiment := range experiments {
-		trial := trialsByExperimentID[experiment.Id]
-		if trial != nil {
-			// Correct trial restarts because
-			// `restart` count is incremented before `restart <= max_restarts` stop restart check,
-			// so trials in terminal state have restarts = max + 1.
-			// Update this correction to happen in the database when we do the remove.
-			//nolint:staticcheck
-			configRestarts, ok := experiment.Config.Fields["max_restarts"].AsInterface().(float64)
-			if ok && trial.Restarts > int32(configRestarts) {
-				trial.Restarts = int32(configRestarts)
-			}
-		}
-
 		resp.Experiments = append(
 			resp.Experiments,
-			&apiv1.SearchExperimentExperiment{Experiment: experiment, BestTrial: trial},
+			&apiv1.SearchExperimentExperiment{
+				Experiment: experiment,
+				BestTrial:  trialsByExperimentID[experiment.Id],
+			},
 		)
 	}
 
@@ -2890,118 +2888,68 @@ func (a *apiServer) PatchTrial(ctx context.Context, req *apiv1.PatchTrialRequest
 func (a *apiServer) PutExperimentLabel(ctx context.Context,
 	req *apiv1.PutExperimentLabelRequest,
 ) (*apiv1.PutExperimentLabelResponse, error) {
-	curUser, _, err := grpcutil.GetUser(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get the user: %s", err)
-	}
-
-	tx, err := db.Bun().BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if err = tx.Rollback(); err != nil && err != sql.ErrTxDone {
-			log.WithError(err).Error("error rolling back transaction in create workspace")
-		}
-	}()
-
-	exp := &experimentv1.Experiment{}
-	query := db.Bun().NewSelect().
-		ModelTableExpr("experiments as e").
-		Model(exp).
-		Apply(getExperimentColumns).
-		Where("e.id = ?", req.ExperimentId)
-	if err = query.Scan(ctx); err != nil {
-		return nil, err
-	}
-	modelExp, err := model.ExperimentFromProto(exp)
+	_, _, err := a.getExperimentAndCheckCanDoActions(ctx, int(req.ExperimentId),
+		experiment.AuthZProvider.Get().CanEditExperimentsMetadata)
 	if err != nil {
 		return nil, err
 	}
 
-	if err = experiment.AuthZProvider.Get().CanEditExperimentsMetadata(
-		ctx, *curUser, modelExp); err != nil {
-		return nil, status.Errorf(codes.PermissionDenied, err.Error())
+	var labelBytes []byte
+	if err := db.Bun().NewRaw(`
+		UPDATE experiments
+		SET config = jsonb_set(config, '{labels}',
+			CASE
+				WHEN config->'labels' @> json_build_array(?)::jsonb THEN config->'labels'
+				WHEN config->'labels' = 'null'::jsonb THEN json_build_array(?)::jsonb
+				ELSE COALESCE(config->'labels', '[]'::jsonb) || json_build_array(?)::jsonb
+			END)
+		WHERE id = ?
+		RETURNING config->'labels' AS labels`, req.Label, req.Label, req.Label, req.ExperimentId).
+		Scan(ctx, &labelBytes); err != nil {
+		return nil, fmt.Errorf("adding label %s to experiment %d: %w",
+			req.Label, req.ExperimentId, err)
 	}
 
-	if slices.Contains(exp.Labels, req.Label) {
-		return &apiv1.PutExperimentLabelResponse{Labels: exp.Labels}, nil
-	}
-	exp.Labels = append(exp.Labels, req.Label)
-
-	_, err = tx.NewUpdate().Model(modelExp).
-		Set("config = jsonb_set(config, '{labels}', ?, true)", exp.Labels).
-		Where("id = ?", exp.Id).
-		Exec(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("error updating experiment %v in database %w", exp.Id, err)
+	// Can't just Scan to a []string directly. Bun adds quotes to each string doing that.
+	var labels []string
+	if err := json.Unmarshal(labelBytes, &labels); err != nil {
+		return nil, fmt.Errorf("unmarshaling labels '%s' into response: %w", string(labelBytes), err)
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("could not commit patch experiment labels transaction %w", err)
-	}
-
-	return &apiv1.PutExperimentLabelResponse{Labels: exp.Labels}, nil
+	return &apiv1.PutExperimentLabelResponse{Labels: labels}, nil
 }
 
 func (a *apiServer) DeleteExperimentLabel(ctx context.Context,
 	req *apiv1.DeleteExperimentLabelRequest,
 ) (*apiv1.DeleteExperimentLabelResponse, error) {
-	curUser, _, err := grpcutil.GetUser(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get the user: %s", err)
-	}
-
-	tx, err := db.Bun().BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if err = tx.Rollback(); err != nil && err != sql.ErrTxDone {
-			log.WithError(err).Error("error rolling back transaction in create workspace")
-		}
-	}()
-
-	exp := &experimentv1.Experiment{}
-	query := db.Bun().NewSelect().
-		ModelTableExpr("experiments as e").
-		Model(exp).
-		Apply(getExperimentColumns).
-		Where("e.id = ?", req.ExperimentId).
-		For("UPDATE")
-	if err = query.Scan(ctx); err != nil {
-		return nil, err
-	}
-
-	modelExp, err := model.ExperimentFromProto(exp)
+	_, _, err := a.getExperimentAndCheckCanDoActions(ctx, int(req.ExperimentId),
+		experiment.AuthZProvider.Get().CanEditExperimentsMetadata)
 	if err != nil {
 		return nil, err
 	}
 
-	if err = experiment.AuthZProvider.Get().CanEditExperimentsMetadata(
-		ctx, *curUser, modelExp); err != nil {
-		return nil, status.Errorf(codes.PermissionDenied, err.Error())
+	var labelBytes []byte
+	if err := db.Bun().NewRaw(`
+		UPDATE experiments
+		SET config = jsonb_set(config, '{labels}',
+			CASE
+				WHEN config->'labels' = 'null'::jsonb THEN '[]'::jsonb
+                ELSE COALESCE(config->'labels', '[]'::jsonb) - ?
+			END)
+		WHERE id = ?
+		RETURNING config->'labels' AS labels`, req.Label, req.ExperimentId).
+		Scan(ctx, &labelBytes); err != nil {
+		return nil, fmt.Errorf("deleting label %s from experiment %d: %w",
+			req.Label, req.ExperimentId, err)
 	}
 
-	i := slices.Index(exp.Labels, req.Label)
-	if i == -1 {
-		return &apiv1.DeleteExperimentLabelResponse{Labels: exp.Labels}, nil
-	}
-	exp.Labels = slices.Delete(exp.Labels, i, i+1)
-
-	_, err = tx.NewUpdate().Model(modelExp).
-		Set("config = jsonb_set(config, '{labels}', ?, true)", exp.Labels).
-		Where("id = ?", exp.Id).
-		Exec(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("error updating experiment %v in database: %w", exp.Id, err)
+	// Can't just Scan to a []string directly. Bun adds quotes to each string doing that.
+	var labels []string
+	if err := json.Unmarshal(labelBytes, &labels); err != nil {
+		return nil, fmt.Errorf("unmarshaling labels '%s' into response: %w", string(labelBytes), err)
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("could not commit delete experiment labels transaction: %w", err)
-	}
-
-	return &apiv1.DeleteExperimentLabelResponse{Labels: exp.Labels}, nil
+	return &apiv1.DeleteExperimentLabelResponse{Labels: labels}, nil
 }
 
 func (a *apiServer) DeleteTensorboardFiles(
