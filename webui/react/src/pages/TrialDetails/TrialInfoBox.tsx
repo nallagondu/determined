@@ -2,20 +2,33 @@ import Card from 'hew/Card';
 import { useModal } from 'hew/Modal';
 import { Loadable, Loaded, NotLoaded } from 'hew/utils/loadable';
 import { isEqual } from 'lodash';
+import { useObservable } from 'micro-observables';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import CheckpointModalComponent from 'components/CheckpointModal';
 import ModelCreateModal from 'components/ModelCreateModal';
 import OverviewStats from 'components/OverviewStats';
 import RegisterCheckpointModal from 'components/RegisterCheckpointModal';
+import ResourceAllocationModalComponent from 'components/ResourceAllocationModal';
 import Section from 'components/Section';
 import TimeAgo from 'components/TimeAgo';
-import { getModels } from 'services/api';
+import { SimplifiedNode } from 'pages/ResourcePool/NodeElement';
+import { getModels, getTaskAllocation } from 'services/api';
 import { V1GetModelsRequestSortBy } from 'services/api-ts-sdk';
-import { CheckpointWorkloadExtended, ExperimentBase, ModelItem, TrialDetails } from 'types';
+import clusterStore from 'stores/cluster';
+import {
+  AllocationData,
+  CheckpointWorkloadExtended,
+  ExperimentBase,
+  ModelItem,
+  RunState,
+  TrialDetails,
+} from 'types';
 import handleError, { ErrorType } from 'utils/error';
 import { validateDetApiEnum } from 'utils/service';
-import { humanReadableBytes } from 'utils/string';
+import { humanReadableBytes, pluralizer } from 'utils/string';
+
+import css from './TrialInfoBox.module.scss';
 
 interface Props {
   experiment: ExperimentBase;
@@ -43,11 +56,93 @@ const TrialInfoBox: React.FC<Props> = ({ trial, experiment }: Props) => {
 
   const [canceler] = useState(new AbortController());
   const [models, setModels] = useState<Loadable<ModelItem[]>>(NotLoaded);
+  const [taskAllocation, setTaskAllocation] =
+    useState<Loadable<AllocationData | undefined>>(NotLoaded);
   const [selectedModelName, setSelectedModelName] = useState<string>();
+  const shouldRenderAllocationCard = useMemo(
+    () => trial !== undefined || experiment.numTrials === 1,
+    [trial, experiment.numTrials],
+  ); // as per ticket requirements, we're only rendering it on single trial experiments and trial details pages
+  const resourcePools = Loadable.getOrElse([], useObservable(clusterStore.resourcePools));
+
+  const fetchTaskAllocation = useCallback(async () => {
+    if (!trial) return;
+
+    // one big issue is that taskIds is an optional property
+    let taskId = '';
+
+    if (trial.taskIds?.length) taskId = trial.taskIds[trial.taskIds.length - 1];
+
+    if (!taskId) return;
+
+    try {
+      const response = await getTaskAllocation(
+        { taskId },
+        {
+          signal: canceler.signal,
+        },
+      );
+      setTaskAllocation((prev) => {
+        const loadedTaskAllocation = Loaded(response);
+        if (isEqual(prev, loadedTaskAllocation)) return prev;
+        return loadedTaskAllocation;
+      });
+    } catch (e) {
+      handleError(e, {
+        publicSubject: 'Unable to fetch task allocation data.',
+        type: ErrorType.Api,
+      });
+    }
+  }, [canceler.signal, trial]);
+
+  const experimentRPInfo = useMemo(() => {
+    if (!trial) return undefined;
+
+    const rpLabel = experiment.resourcePool;
+    const rpData = resourcePools.find((rp) => rp.name === rpLabel);
+
+    if (rpData === undefined) return undefined;
+
+    const allocation = Loadable.getOrElse(undefined, taskAllocation);
+    const rpUsedSlots =
+      allocation?.acceleratorData.reduce((acc, nodes) => {
+        return acc + (nodes.acceleratorUuids?.length ?? 0);
+      }, 0) || 0;
+
+    if (!allocation?.acceleratorData.length) return undefined;
+
+    const getSlots = (accelerators: string[]) => {
+      const slots: SimplifiedNode[] = accelerators.map((slotId) => ({
+        container: { id: slotId },
+      }));
+
+      if (rpData.slotsPerAgent !== undefined && slots.length < rpData.slotsPerAgent) {
+        for (let i = 0; i < rpData.slotsPerAgent; i++) {
+          slots.push({ container: undefined });
+        }
+      }
+
+      return slots;
+    };
+
+    return {
+      ...rpData,
+      isRPFull: rpUsedSlots === (experiment.config.resources.slots_per_trial || 0),
+      isRunning: trial.state === RunState.Running,
+      name: rpData.name || experiment.resourcePool,
+      nodes: allocation.acceleratorData.map((node) => ({
+        nodeName: node.nodeName || '',
+        slotsIds: getSlots(node.acceleratorUuids || []),
+      })),
+      slotsUsed: rpUsedSlots,
+      totalSlots: (rpData.slotsPerAgent || 1) * rpData.maxAgents,
+    };
+  }, [experiment, resourcePools, trial, taskAllocation]);
 
   const modelCreateModal = useModal(ModelCreateModal);
   const checkpointModal = useModal(CheckpointModalComponent);
   const registerModal = useModal(RegisterCheckpointModal);
+  const allocationModal = useModal(ResourceAllocationModalComponent);
 
   const handleOnCloseCreateModel = useCallback(
     (modelName?: string) => {
@@ -89,10 +184,24 @@ const TrialInfoBox: React.FC<Props> = ({ trial, experiment }: Props) => {
   useEffect(() => {
     fetchModels();
   }, [fetchModels]);
+  useEffect(() => {
+    fetchTaskAllocation();
+  }, [fetchTaskAllocation]);
 
   const handleModalCheckpointClick = useCallback(() => {
     checkpointModal.open();
   }, [checkpointModal]);
+
+  const handleModalAllocationClick = useCallback(() => {
+    allocationModal.open();
+  }, [allocationModal]);
+
+  const handleAllocationModalClose = useCallback(
+    () => allocationModal.close(''),
+    [allocationModal],
+  );
+
+  const appendText = (n: number) => pluralizer(n, 'Slot');
 
   return (
     <Section>
@@ -111,7 +220,7 @@ const TrialInfoBox: React.FC<Props> = ({ trial, experiment }: Props) => {
         {bestCheckpoint && (
           <>
             <OverviewStats title="Best Checkpoint" onClick={handleModalCheckpointClick}>
-              Batch {bestCheckpoint.totalBatches}
+              <span className={css.modalLink}>Batch {bestCheckpoint.totalBatches}</span>
             </OverviewStats>
             <registerModal.Component
               checkpoints={bestCheckpoint.uuid ? [bestCheckpoint.uuid] : []}
@@ -126,6 +235,26 @@ const TrialInfoBox: React.FC<Props> = ({ trial, experiment }: Props) => {
               title="Best Checkpoint"
             />
             <modelCreateModal.Component onClose={handleOnCloseCreateModel} />
+          </>
+        )}
+        {shouldRenderAllocationCard && experimentRPInfo !== undefined && (
+          <>
+            <OverviewStats title="Resource Allocation" onClick={handleModalAllocationClick}>
+              <span className={css.modalLink}>
+                {experimentRPInfo.isRPFull
+                  ? `${experimentRPInfo.slotsUsed} ${appendText(experimentRPInfo.slotsUsed)}`
+                  : `${experimentRPInfo.slotsUsed}/${experimentRPInfo.totalSlots} ${appendText(
+                      experimentRPInfo.totalSlots,
+                    )}`}
+              </span>
+            </OverviewStats>
+            <allocationModal.Component
+              accelerator={experimentRPInfo.accelerator || ''}
+              isRunning={experimentRPInfo.isRunning}
+              nodes={experimentRPInfo.nodes}
+              rpName={experimentRPInfo.name}
+              onClose={handleAllocationModalClose}
+            />
           </>
         )}
       </Card.Group>

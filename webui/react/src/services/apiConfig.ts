@@ -1113,6 +1113,16 @@ export const getActiveTasks: DetApi<
   request: (_, options) => detApi.Tasks.getActiveTasksCount(options),
 };
 
+export const getTaskAllocation: DetApi<
+  Service.GetTaskParams,
+  Api.V1GetTaskAcceleratorDataResponse,
+  Type.AllocationData
+> = {
+  name: 'getTaskAllocation',
+  postProcess: (response) => response,
+  request: (params: Service.GetTaskParams) => detApi.Internal.getTaskAcceleratorData(params.taskId),
+};
+
 /* Webhooks */
 
 export const createWebhook: DetApi<Api.V1Webhook, Api.V1PostWebhookResponse, Type.Webhook> = {

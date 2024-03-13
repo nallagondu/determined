@@ -1,0 +1,38 @@
+.base {
+  display: flex;
+  flex-direction: column;
+
+  .nodesContainer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    margin: 16px 0;
+  }
+  .infoContainer {
+    align-items: baseline;
+    display: flex;
+    justify-content: space-between;
+    margin: var(--spacing-xs) 0;
+    position: relative;
+
+    &:last-of-type {
+      margin-bottom: 30px;
+    }
+    span {
+      flex-grow: 0;
+      width: fit-content;
+    }
+    .dots {
+      border-bottom: 2px dotted var(--theme-surface-border-weak);
+      flex-grow: 1;
+    }
+  }
+  .slotsContainer {
+    margin-top: 32px;
+  }
+}
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}

@@ -371,6 +371,8 @@ export const ioToExperimentConfig = (
     },
   };
   if (io.resources.max_slots != null) config.resources.maxSlots = io.resources.max_slots;
+  if (io.resources.slots_per_trial !== null)
+    config.resources.slots_per_trial = io.resources.slots_per_trial;
   return config;
 };
 
@@ -638,6 +640,8 @@ export const decodeV1TrialToTrialItem = (data: Sdk.Trialv1Trial): types.TrialIte
     startTime: data.startTime as unknown as string,
     state: decodeExperimentState(data.state),
     summaryMetrics: data.summaryMetrics && decodeSummaryMetrics(data.summaryMetrics),
+    taskId: data.taskId,
+    taskIds: data.taskIds,
     totalBatchesProcessed: data.totalBatchesProcessed,
     totalCheckpointSize: parseInt(data?.totalCheckpointSize || '0'),
   };
