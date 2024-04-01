@@ -975,8 +975,6 @@ commands:
         type: string
       master-cert-name:
         type: string
-      addon:
-        type: string
     steps:
       - set-cluster-id:
           cluster-id: <<parameters.cluster-id>>
@@ -1059,7 +1057,7 @@ commands:
           version: v3.12.3
       - run:
           command: |
-            helm install ${GENERATED_NAMESPACE}-<<parameters.addon>> helm/charts/determined  --set "${HELM_VALUES}" --namespace="${GENERATED_NAMESPACE}-<<parameters.addon>>" --wait
+            helm install ${GENERATED_NAMESPACE} helm/charts/determined  --set "${HELM_VALUES}" --namespace="${GENERATED_NAMESPACE}" --wait
           name: Helm Install
       - run:
           command: |
@@ -2781,7 +2779,7 @@ jobs:
             # Extract the commit hash from Git metadata
             COMMIT_HASH=$(git rev-parse --short HEAD)
             TIMESTAMP=$(date +"%Y%m%d%H%M%S")
-            echo "GENERATED_NAMESPACE=\"test-${TIMESTAMP}\"" >> $BASH_ENV
+            echo "GENERATED_NAMESPACE=test-<<parameters.test-name>>" >> $BASH_ENV
       - generate-tls-cert
       - setup-shared-cluster:
           det-version: ${CIRCLE_SHA1}-shared-cluster
@@ -2789,7 +2787,6 @@ jobs:
           master-tls-cert: ${MASTER_TLS_CERT}
           master-tls-key: ${MASTER_TLS_KEY}
           master-cert-name: ${MASTER_CERT_NAME}
-          addon: <<parameters.test-name>>
       - set-google-application-credentials
       - run:
           name: Show public IP address
