@@ -975,6 +975,8 @@ commands:
         type: string
       master-cert-name:
         type: string
+      addon:
+        type: string
     steps:
       - set-cluster-id:
           cluster-id: <<parameters.cluster-id>>
@@ -1057,7 +1059,7 @@ commands:
           version: v3.12.3
       - run:
           command: |
-            helm install ${GENERATED_NAMESPACE} helm/charts/determined  --set "${HELM_VALUES}" --namespace="${GENERATED_NAMESPACE}" --wait
+            helm install ${GENERATED_NAMESPACE}-<<parameters.addon>> helm/charts/determined  --set "${HELM_VALUES}" --namespace="${GENERATED_NAMESPACE}-<<parameters.addon>>" --wait
           name: Helm Install
       - run:
           command: |
@@ -2750,6 +2752,8 @@ jobs:
       environment-gpu-enabled:
         type: string
         default: "0"
+      test-name:
+        type: string
     circleci_ip_ranges: true
     environment:
       DET_TEST_GPU_ENABLED: <<parameters.environment-gpu-enabled>>
@@ -2777,7 +2781,7 @@ jobs:
             # Extract the commit hash from Git metadata
             COMMIT_HASH=$(git rev-parse --short HEAD)
             TIMESTAMP=$(date +"%Y%m%d%H%M%S")
-            echo "GENERATED_NAMESPACE=\"test-${TIMESTAMP}-${COMMIT_HASH}-${CIRCLE_NODE_INDEX}\"" >> $BASH_ENV
+            echo "GENERATED_NAMESPACE=\"test-${TIMESTAMP}\"" >> $BASH_ENV
       - generate-tls-cert
       - setup-shared-cluster:
           det-version: ${CIRCLE_SHA1}-shared-cluster
@@ -2785,6 +2789,7 @@ jobs:
           master-tls-cert: ${MASTER_TLS_CERT}
           master-tls-key: ${MASTER_TLS_KEY}
           master-cert-name: ${MASTER_CERT_NAME}
+          addon: <<parameters.test-name>>
       - set-google-application-credentials
       - run:
           name: Show public IP address
@@ -3408,6 +3413,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 31b0b85f-eca6-4e4e-813f-f8eb504aacea
 
       - test-e2e-shared-cluster:
           name: b08734e5-acab-4e72-82b2-2b56dc2f942f
@@ -3418,6 +3424,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 1179ae23-04c4-4d27-a567-ae83d8ca2fa0
 
       - test-e2e-shared-cluster:
           name: 40c73b50-3456-44f8-813c-d7d53e2edcfc
@@ -3428,6 +3435,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: a3d1c0ca-a8c4-4754-b3a3-6be69985ace6
        
       - test-e2e-shared-cluster:
           name: bd8f81a3-c67d-408d-8f5b-852973f6a89e
@@ -3438,6 +3446,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 5395d67d-6dcb-4a6c-939a-4d86b6120223
        
       - test-e2e-shared-cluster:
           name: 1906de35-195b-4042-a85f-f008b51cdad0
@@ -3448,6 +3457,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: db0e18c8-5808-4423-adbe-b0ef22555356
        
       - test-e2e-shared-cluster:
           name: 188e79ab-26ba-4971-a441-4b6cbf7b144e
@@ -3458,6 +3468,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 30bc3c2f-050b-4365-bdd4-0776f8c25dfc
        
       - test-e2e-shared-cluster:
           name: b2406288-4197-43ae-a285-c93fd4be6c6e
@@ -3468,6 +3479,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: f0c348cb-2b97-49f0-b1c3-d1e0ef916f43
 
       - test-e2e-shared-cluster:
           name: bfe6c399-88af-42cc-8385-ca01c07e37ca
@@ -3478,6 +3490,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: b82b7384-ca96-49db-a676-8908f46927ec
 
       - test-e2e-shared-cluster:
           name: 1118b991-6b87-47a2-baf4-525fc57aca45
@@ -3488,6 +3501,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 32295174-8e2b-4f86-991e-5a57bc9b2cfa
        
       - test-e2e-shared-cluster:
           name: 4033286d-ee47-4a01-ae99-231bad893ee0
@@ -3498,6 +3512,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: ec3dbb62-13ed-46a0-8b74-d3031b38b567
        
       - test-e2e-shared-cluster:
           name: 1f03ffeb-dde7-4159-8bb1-45894b62e93a
@@ -3508,6 +3523,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 847c8dc0-0cc5-4ec7-add2-d53c06a592e5
        
       - test-e2e-shared-cluster:
           name: d59152a7-14ac-42eb-afbc-9bd0c49d83f6
@@ -3518,6 +3534,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 93fd415a-d835-47c7-9df5-5f5cdfed36b2
        
       - test-e2e-shared-cluster:
           name: 7e80d2e2-4392-4d6b-89c6-a818f777ae91
@@ -3528,6 +3545,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 56d42cc2-5f6b-436f-bf53-3ac256ed2c6f
 
       
       - test-e2e-shared-cluster:
@@ -3539,6 +3557,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 0a7cf614-026b-4687-8def-61844464cbcb
 
       - test-e2e-shared-cluster:
           name: e270a0ae-0224-4eee-af39-3d9aa3166120
@@ -3549,6 +3568,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: f0b4e7e5-bfc5-44d6-a843-fdfcf96b46bc
 
       - test-e2e-shared-cluster:
           name: 39acd8d0-ed03-448b-8ad7-6ba5b4d5aa2d
@@ -3559,6 +3579,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 0c617acf-70ea-4c25-9771-1a2b1af4b38a
        
       - test-e2e-shared-cluster:
           name: 28194b64-415e-43c6-9eae-27e3905146d6
@@ -3569,6 +3590,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 5a592f4f-b5de-4d0e-9135-097c9957f14c
        
       - test-e2e-shared-cluster:
           name: 81cb684c-c2ef-4c62-90b3-c29dd3e6bf08
@@ -3579,6 +3601,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 01382305-c560-4c65-9c7e-2a09275f2bc3
        
       - test-e2e-shared-cluster:
           name: 8acdd7cd-27aa-4e63-8a46-0996a52d7b28
@@ -3589,6 +3612,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 0f191914-1e7c-460d-825b-7f5a9aa7da01
        
       - test-e2e-shared-cluster:
           name: 605abba7-1cda-4801-8afb-100ac050b8bb
@@ -3599,6 +3623,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 805acd47-109d-4d42-bd05-072d99c4bbb6
           
       - test-e2e-shared-cluster:
           name: d56df377-19b1-408a-99c7-9dfe654aab05
@@ -3609,6 +3634,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 3fbd888a-74b7-4a5d-88f2-8a4da1a224ed
 
       - test-e2e-shared-cluster:
           name: 00026081-a047-449a-bfd1-78c116fd03e9
@@ -3619,6 +3645,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 3d30ac29-4cd6-462e-9096-f31c13a6ce04
        
       - test-e2e-shared-cluster:
           name: e8fdc430-f38a-4422-b780-32cb946a55bb
@@ -3629,6 +3656,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 52ce1997-4534-4472-9a55-065bcab5b2cd
        
       - test-e2e-shared-cluster:
           name: 9b7e55c1-5dae-4872-ac08-01c5ad1c771a
@@ -3639,6 +3667,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 5ff8042f-f9a0-4c26-98c2-634827c4c946
        
       - test-e2e-shared-cluster:
           name: ae567191-dd38-4ab8-935a-843db413f4de
@@ -3649,6 +3678,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 3ae39fef-fe6f-411f-aca1-6bd28c3d9e86
        
       - test-e2e-shared-cluster:
           name: 54074186-dd17-44ca-bec2-bcc81d70f1dc
@@ -3659,6 +3689,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: fca63d08-1d13-4a77-b568-ef88a26ebc27
       - test-e2e-shared-cluster:
           name: e9d92c14-9b96-4116-8b60-0831c6042598
           context: 
@@ -3668,6 +3699,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 6f4f37d7-f65d-44f9-a41e-2b294e850471
 
       - test-e2e-shared-cluster:
           name: 717fd01d-aae5-4ebd-bbf0-626e68b4f4cb
@@ -3678,6 +3710,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 154b385a-5ba8-4c31-9655-8a4ce4d28c7c
 
       - test-e2e-shared-cluster:
           name: 52e3f9e1-439d-44a2-9d7b-9af0a26a9123
@@ -3688,6 +3721,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: db7c41e2-afe4-431b-a758-865eff185bca
        
       - test-e2e-shared-cluster:
           name: 8d5a43a9-7201-410f-9333-4e62cad5284d
@@ -3698,6 +3732,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: cffa7fcd-d514-4e5d-9656-6431d1e6431f
        
       - test-e2e-shared-cluster:
           name: f6817935-9757-47dc-bf98-bb2df378ca30
@@ -3708,6 +3743,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 39f4590b-6608-447a-a6fe-e23c806d5781
        
       - test-e2e-shared-cluster:
           name: a63db156-2b79-4516-9c32-ef34c7fec3d6
@@ -3718,6 +3754,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 61d29471-c9d1-4a1d-8a18-55d878fa7949
        
       - test-e2e-shared-cluster:
           name: 190bc18f-9bcf-49f7-b4a6-fbb85de66ff6
@@ -3728,6 +3765,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 0ca7fefc-fc00-4dec-a514-57549e340011
           
       - test-e2e-shared-cluster:
           name: e61502d2-bfeb-449c-8bd4-e2c47b11011f
@@ -3738,6 +3776,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 9e2be754-0160-4c5a-94eb-c6f90dfa6b19
 
       - test-e2e-shared-cluster:
           name: e905c2a0-00ec-40cf-b558-899359a62071
@@ -3748,6 +3787,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 9a4f46ef-3bf3-47e1-bea1-a3e91a2d8658
        
       - test-e2e-shared-cluster:
           name: 5f97a41b-6a15-4246-8447-22e2a62232f1
@@ -3758,6 +3798,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 22c2850e-6129-43ad-b97c-69d6dd184a6c
        
       - test-e2e-shared-cluster:
           name: 3ff0d30c-de81-41fd-95f9-5339dd1c47e4
@@ -3768,6 +3809,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 4768ad04-28de-4504-8415-3308e2ef5942
        
       - test-e2e-shared-cluster:
           name: 2b749886-47b9-472d-bb1a-5a490e5525ee
@@ -3778,6 +3820,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 0aa37534-2809-4bc7-bfd4-133a8e6b2ab2
        
       - test-e2e-shared-cluster:
           name: 3b311c04-22b1-4f01-bc46-cb0f36157f42
@@ -3788,6 +3831,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 7e3364ec-d171-43cd-aa4e-a7a3e9958a32
       
       - test-e2e-shared-cluster:
           name: 5cf6cef6-7d20-4050-8799-1b11df3f57fa
@@ -3798,6 +3842,7 @@ workflows:
             - package-and-push-system-dev-small
           parallelism: 4
           mark: "e2e_gpu and not gpu_required"
+          test-name: 608abb10-55cb-4911-a50e-07d79310afbc
 
       - test-det-deploy:
           name: test-det-deploy-local
