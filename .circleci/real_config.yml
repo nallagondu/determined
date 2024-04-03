@@ -1057,7 +1057,7 @@ commands:
           version: v3.12.3
       - run:
           command: |
-            helm install ${GENERATED_NAMESPACE} helm/charts/determined  --set "${HELM_VALUES}" --namespace="${GENERATED_NAMESPACE}" --wait
+            helm install ${GENERATED_NAMESPACE} helm/charts/determined  --set "${HELM_VALUES}" --namespace="${GENERATED_NAMESPACE}" --wait --timeout 10m0s
           name: Helm Install
       - run:
           command: |
