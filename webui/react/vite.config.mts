@@ -168,6 +168,7 @@ export default defineConfig(({ mode }) => ({
         ...(configDefaults.coverage.exclude ?? []),
         'src/vendor/**/*',
         'src/services/api-ts-sdk/*',
+        'src/e2e/**/*'
       ],
     },
     css: {
