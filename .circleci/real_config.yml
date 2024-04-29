@@ -1687,10 +1687,49 @@ jobs:
           check: false
       - make-package-small
       - run: tools/scripts/retry.sh make -C master publish-dev-small
+      - run:
+          name: Create Namespace & Cert Name
+          command: |
+              TIMESTAMP=$(date +"%Y%m%d%H%M%S")
+              uuid=$(cat /proc/sys/kernel/random/uuid)
+              uuid=${uuid:0:8}
+              NAMESPACE_1=test-${TIMESTAMP}-${uuid}-0
+              NAMESPACE_2=test-${TIMESTAMP}-${uuid}-1
+              NAMESPACE_3=test-${TIMESTAMP}-${uuid}-2
+              echo "GENERATED_NAMESPACES=(\"${NAMESPACE_1}\" \"${NAMESPACE_2}\" \"${NAMESPACE_3}\")" >> $BASH_ENV
+      - run:
+          name: Push Docker
+          command: |
+            cd .circleci/shared_cluster
+
+            for i in 0 1 2; do
+              uuid_delete=$(cat /proc/sys/kernel/random/uuid)
+              uuid_delete=${uuid_delete:0:8}
+              DOCKER_PREFIX="zero"
+              if [[ ${i} -eq 0 ]]; then
+                NTD_0=${CIRCLE_SHA1}-${uuid_delete}
+                DOCKER_PREFIX="zero"
+              elif [[ ${i} -eq 1 ]]; then
+                DOCKER_PREFIX="one"
+                NTD_1=${CIRCLE_SHA1}-${uuid_delete}
+              else
+                DOCKER_PREFIX="two"
+                NTD_2=${CIRCLE_SHA1}-${uuid_delete}
+              fi
+             
+              echo "CMD [\"/wait-and-clean\", \"${GENERATED_NAMESPACES[${i}]}\"]" >> ${DOCKER_PREFIX}.Dockerfile
+              docker build -f ${DOCKER_PREFIX}.Dockerfile --tag determinedai/det-ci-iamges:${CIRCLE_SHA1}-${uuid_delete} .
+              docker push determinedai/det-ci-iamges:${CIRCLE_SHA1}-${uuid_delete}
+              
+              echo "NTDS=(\"${NTD_0}\" \"${NTD_1}\" \"${NTD_2}\")" >> $BASH_ENV
+            done
+      - run: |
+          cp $BASH_ENV bash.env
       - persist_to_workspace:
           root: .
           paths:
             - harness/dist
+            - bash.env
 
   package-and-push-system-rc:
     docker:
@@ -3721,6 +3760,68 @@ jobs:
           failure_message: ':thisisfine: A \`<<parameters.mark>>\` E2E GKE GPU job on branch \`${CIRCLE_BRANCH}\` has failed! Author Email: \`${AUTHOR_EMAIL}\`'
           mentions: <<parameters.slack-mentions>>
           channel: <<parameters.slack-channel>>
+  
+  generate-namespaces:
+    docker:
+      - image: <<pipeline.parameters.docker-image>>
+        environment:
+          GO111MODULE: "on"
+    resource_class: xlarge
+    steps:
+      - checkout
+      - add-and-fetch-upstream
+      - skip-if-only-docs
+      - skip-if-only-github
+      - skip-if-only-webui
+      - attach_workspace:
+          at: .
+      - run:
+          name: Create Namespace & Cert Name
+          command: |
+              TIMESTAMP=$(date +"%Y%m%d%H%M%S")
+              uuid=$(cat /proc/sys/kernel/random/uuid)
+              uuid=${uuid:0:8}
+              NAMESPACE_1=test-${TIMESTAMP}-${uuid}-0
+              NAMESPACE_2=test-${TIMESTAMP}-${uuid}-1
+              NAMESPACE_3=test-${TIMESTAMP}-${uuid}-2
+              echo "GENERATED_NAMESPACES=(\"${NAMESPACE_1}\" \"${NAMESPACE_2}\" \"${NAMESPACE_3}\")" >> $BASH_ENV
+      - setup_remote_docker:
+          version: previous
+      - login-docker:
+          username: ${DOCKER_USER}
+          password: ${DOCKER_PASS}
+      - run:
+          name: Push Docker
+          command: |
+            cd .circleci/shared_cluster
+
+            for i in 0 1 2; do
+              uuid_delete=$(cat /proc/sys/kernel/random/uuid)
+              uuid_delete=${uuid_delete:0:8}
+              DOCKER_PREFIX="zero"
+              if [[ ${i} -eq 0 ]]; then
+                NTD_0=${CIRCLE_SHA1}-${uuid_delete}
+                DOCKER_PREFIX="zero"
+              elif [[ ${i} -eq 1 ]]; then
+                DOCKER_PREFIX="one"
+                NTD_1=${CIRCLE_SHA1}-${uuid_delete}
+              else
+                DOCKER_PREFIX="two"
+                NTD_2=${CIRCLE_SHA1}-${uuid_delete}
+              fi
+             
+              echo "CMD [\"/wait-and-clean\", \"${GENERATED_NAMESPACES[${i}]}\"]" >> ${DOCKER_PREFIX}.Dockerfile
+              docker build -f ${DOCKER_PREFIX}.Dockerfile --tag determinedai/det-ci-iamges:${CIRCLE_SHA1}-${uuid_delete} .
+              docker push determinedai/det-ci-iamges:${CIRCLE_SHA1}-${uuid_delete}
+              
+              echo "NTDS=(\"${NTD_0}\" \"${NTD_1}\" \"${NTD_2}\")" >> $BASH_ENV
+            done
+      - run: |
+          cp $BASH_ENV bash.env
+      - persist_to_workspace:
+          root: .
+          paths:
+            - bash.env
 
   test-e2e-shared-cluster:
     parameters:
@@ -3750,18 +3851,13 @@ jobs:
       - set-slack-user-id
       - attach_workspace:
           at: .
+      - run: |
+          cat bash.env >> $BASH_ENV
       - setup-python-venv:
           install-python: false
           determined: true
           extra-requirements-file: "e2e_tests/tests/requirements.txt"
           executor: <<pipeline.parameters.docker-image>>
-      - run:
-          name: Create Namespace & Cert Name
-          command: |
-            TIMESTAMP=$(date +"%Y%m%d%H%M%S")
-            uuid=$(cat /proc/sys/kernel/random/uuid)
-            uuid=${uuid:0:8}
-            echo "GENERATED_NAMESPACE=test-<<parameters.test-type>>-${TIMESTAMP}-${uuid}-${CIRCLE_NODE_INDEX}" >> $BASH_ENV
       - generate-tls-cert
       - setup-shared-cluster:
           det-version: ${CIRCLE_SHA1}-shared-cluster
@@ -3794,6 +3890,11 @@ jobs:
           wait-for-master: false
       - store_test_results:
           path: /tmp/test-results/
+      - run:
+          name: Delete Namespace
+          command: |
+              HELM_VALUES_DELETE="version=${NTDS[${CIRCLE_NODE_INDEX}]}"
+              helm install delete-${CIRCLE_SHA1}-${CIRCLE_NODE_INDEX}  tools/k8s/helm/charts/determined  --set "${HELM_VALUES_DELETE}" --namespace=default
 
   test-det-deploy:
     parameters:
