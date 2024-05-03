@@ -10,7 +10,7 @@ import DynamicTabs from 'components/DynamicTabs';
 import Page, { BreadCrumbRoute } from 'components/Page';
 import PageNotFound from 'components/PageNotFound';
 import { useProjectActionMenu } from 'components/ProjectActionDropdown';
-import useFeature from 'hooks/useFeature';
+// import useFeature from 'hooks/useFeature';
 import usePermissions from 'hooks/usePermissions';
 import usePolling from 'hooks/usePolling';
 import { paths } from 'routes/utils';
@@ -33,7 +33,7 @@ type Params = {
 
 const ProjectDetails: React.FC = () => {
   const { projectId } = useParams<Params>();
-  const f_explist = useFeature().isOn('explist_v2');
+  const f_explist = false; // useFeature().isOn('explist_v2');
 
   const [project, setProject] = useState<Project | undefined>();
 
