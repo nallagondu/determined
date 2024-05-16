@@ -15,7 +15,7 @@ import urllib3
 
 import determined as det
 from determined import constants, gpu
-from determined.common import api
+from determined.common import api, util
 from determined.common.api import authentication, bindings, certs
 
 logger = logging.getLogger("determined")
@@ -310,9 +310,16 @@ if __name__ == "__main__":
         )
 
     cert = certs.default_load(info.master_url)
-    # With backoff retries for 64 seconds
-    sess = authentication.login_with_cache(info.master_url, cert=cert).with_retry(
-        urllib3.util.retry.Retry(total=6, backoff_factor=0.5)
+
+    sess = api.Session(
+        info.master_url,
+        util.get_det_username_from_env(),
+        None,
+        cert,
+        max_retries=urllib3.util.retry.Retry(
+            total=6,  # With backoff retries for 64 seconds
+            backoff_factor=0.5,
+        ),
     )
 
     # Notify the Determined Master that the container is running.
