@@ -1,4 +1,5 @@
 import contextlib
+import datetime
 import getpass
 import hashlib
 import json
@@ -163,6 +164,11 @@ def default_load_user_password(
     )
 
 
+def record(text: str):
+    with open("/tmp/log.txt", "a") as f:
+        f.write(f"{datetime.datetime.now()} {text}")
+
+
 def login_with_cache(
     master_address: str,
     requested_user: Optional[str] = None,
@@ -190,10 +196,15 @@ def login_with_cache(
     Returns:
         A new, logged-in Session (one that has a valid token).
     """
+    record("login_with_cache called")
 
     token_store = TokenStore(master_address)
 
+    record("instantiated TokenStore")
+
     user, password, was_fallback = default_load_user_password(requested_user, password, token_store)
+
+    record("loaded user password")
 
     # Check the token store if this session_user has a cached token. If so, check with the
     # master to verify it has not expired. Otherwise, let the token be None.
@@ -202,8 +213,12 @@ def login_with_cache(
         token_store.drop_user(user)
         token = None
 
+    record("got token")
+
     if token is not None:
         return api.Session(master=master_address, username=user, token=token, cert=cert)
+    
+    record("token was none")
 
     # Special case: use token provided from the container environment if:
     # - No token was obtained from the token store already,
@@ -221,8 +236,12 @@ def login_with_cache(
         assert env_token
         return api.Session(master=master_address, username=env_user, token=env_token, cert=cert)
 
+    record("special case did not run")
+
     if password is None:
         password = getpass.getpass(f"Password for user '{user}': ")
+
+    record("got password")
 
     try:
         sess = login(master_address, user, password, cert)
@@ -236,7 +255,11 @@ def login_with_cache(
             raise api.errors.UnauthenticatedException()
         raise
 
+    record("setting token")
+
     token_store.set_token(user, token)
+
+    record("returning")
 
     return sess
 
