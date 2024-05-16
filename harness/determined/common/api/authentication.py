@@ -165,6 +165,7 @@ def default_load_user_password(
 
 
 def record(text: str):
+    print(f"{datetime.datetime.now()} {text}")
     with open("/tmp/log.txt", "a") as f:
         f.write(f"{datetime.datetime.now()} {text}")
 
