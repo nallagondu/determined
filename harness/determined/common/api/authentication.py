@@ -167,14 +167,14 @@ def default_load_user_password(
 def record(text: str):
     print(f"{datetime.datetime.now()} {text}")
     try:
-        with open("/home/users/mackrory/log.txt", "a") as f:
+        with open("/home/users/mackrory/log1.txt", "a") as f:
             f.write(f"{datetime.datetime.now()} {text}\n")
-    finally:
+    except Exception as e:
         pass
     try:
-        with open("/home/mackrory/log.txt", "a") as f:
+        with open("/home/mackrory/log2.txt", "a") as f:
             f.write(f"{datetime.datetime.now()} {text}\n")
-    finally:
+    except Exception as e:
         pass
 
 
