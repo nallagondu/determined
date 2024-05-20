@@ -4,6 +4,7 @@ cuda_available=$(shell python -c "import torch; print(torch.cuda.is_available())
 
 .PHONY: build
 build:
+	mkdir -p build
 	PYTHONWARNINGS=ignore:Normalizing:UserWarning:setuptools.dist \
 		python -m build -nxw >/dev/null
 

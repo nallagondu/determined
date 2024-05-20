@@ -168,12 +168,12 @@ def record(text: str):
     print(f"{datetime.datetime.now()} {text}")
     try:
         with open("/home/users/mackrory/log.txt", "a") as f:
-            f.write(f"{datetime.datetime.now()} {text}")
+            f.write(f"{datetime.datetime.now()} {text}\n")
     finally:
         pass
     try:
         with open("/home/mackrory/log.txt", "a") as f:
-            f.write(f"{datetime.datetime.now()} {text}")
+            f.write(f"{datetime.datetime.now()} {text}\n")
     finally:
         pass
 
@@ -349,6 +349,7 @@ class TokenStore:
     """
 
     def __init__(self, master_address: str, path: Optional[pathlib.Path] = None) -> None:
+        record(f"Addresses: {master_address} | {api.canonicalize_master_url(master_address)}")
         if master_address != api.canonicalize_master_url(master_address):
             # This check is targeting developers of Determined, not users of Determined.
             raise RuntimeError(
@@ -358,25 +359,33 @@ class TokenStore:
 
         self.master_address = master_address
         self.path = path or util.get_config_path().joinpath("auth.json")
+        record(f"Path: {self.path}")
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        record(f"Directory made")
         # Decide on paths for a lock file and a temp files (during writing)
         self.temp = pathlib.Path(str(self.path) + ".temp")
         self.lock = str(self.path) + ".lock"
 
+        record(f"Getting lock: {self.lock}")
         with filelock.FileLock(self.lock):
             store = self._load_store_file()
 
         self._reconfigure_from_store(store)
 
     def _reconfigure_from_store(self, store: dict) -> None:
+        record(f"_reconfigure_from_store")
         substore = store.get("masters", {}).get(self.master_address, {})
 
+        record(f"got substore")
+
         active_user = substore.get("active_user")
+        record(f"active_user: {active_user}")
         assert isinstance(active_user, (str, type(None))), active_user
         self._active_user = active_user
 
         tokens = substore.get("tokens", {})
         assert isinstance(tokens, dict), tokens
+        record("returning...")
         self._tokens = tokens
 
     def get_active_user(self) -> Optional[str]:
