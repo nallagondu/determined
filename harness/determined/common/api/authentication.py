@@ -368,6 +368,7 @@ class TokenStore:
 
         record(f"Getting lock: {self.lock}")
         with filelock.FileLock(self.lock):
+            record("Lock obtained")
             store = self._load_store_file()
 
         self._reconfigure_from_store(store)
@@ -456,11 +457,13 @@ class TokenStore:
         If a v0 store is found it will be reconfigured as a v1 store based on the master_address
         that is being currently requested.
         """
+        record("load_store_file")
         try:
             if not self.path.exists():
                 return {"version": 1}
 
             try:
+                record("opening path")
                 with self.path.open() as f:
                     store = json.load(f)
             except json.JSONDecodeError:
@@ -469,14 +472,18 @@ class TokenStore:
             if not isinstance(store, dict):
                 raise api.errors.CorruptTokenCacheException()
 
+            record("getting version")
             version = store.get("version", 0)
             if version < 1:
+                record("validate_token_store_v0")
                 validate_token_store_v0(store)
                 store = shim_store_v0(store, self.master_address)
             if version < 2:
+                record("validate_token_store_v1")
                 validate_token_store_v1(store)
                 store = shim_store_v1(store)
 
+            record("validate_token_store_v2")
             validate_token_store_v2(store)
 
             assert isinstance(store, dict), store
