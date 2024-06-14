@@ -756,7 +756,7 @@ commands:
         default: false
       deployment-type:
         type: string
-        default: simple-rds
+        default: simple
       ee:
         type: boolean
         default: false
@@ -885,7 +885,7 @@ commands:
         type: string
       deployment-type:
         type: string
-        default: simple-rds
+        default: simple
       ee:
         type: boolean
         default: false
@@ -4752,9 +4752,6 @@ workflows:
             - aws
             - determined-ee
             - aws-ci-cluster-default-user-credentials
-          filters:
-            branches:
-              only: main
           requires:
             - package-and-push-system-dev-ee
           matrix:
