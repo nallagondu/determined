@@ -314,8 +314,8 @@ const ExperimentCreateModalComponent = ({
       };
       return _.isEqual(prev, newModalState) ? prev : newModalState;
     });
-    form.validateFields(requiredFields); // initial disabled state set here, gets updated later in handleFieldsChange
-  }, [experiment, trial, type, isFork, form, requiredFields]);
+    if (modalState.isAdvancedMode) form.validateFields(requiredFields); // initial disabled state set here, gets updated later in handleFieldsChange
+  }, [experiment, trial, type, isFork, form, requiredFields, modalState.isAdvancedMode]);
 
   if (!experiment || (!isFork && !trial)) return <></>;
 
