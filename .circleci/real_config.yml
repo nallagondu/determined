@@ -5577,10 +5577,7 @@ workflows:
           filters: *rc-filters
 
       - retag-docker-images:
-          parameters:
-          matrix:
-            parameters:
-              release: [true]
+          release: true
           filters: *release-filters
 
       - publish-python-package:
