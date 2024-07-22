@@ -760,9 +760,6 @@ func (e *internalExperiment) handleContinueExperiment(reqID model.RequestID) (*i
 func (e *internalExperiment) processOperations(
 	ops []searcher.Operation, err error,
 ) {
-	if _, ok := model.StoppingStates[e.State]; ok {
-		return
-	}
 	if err != nil {
 		e.syslog.Error(err)
 		e.updateState(model.StateWithReason{
