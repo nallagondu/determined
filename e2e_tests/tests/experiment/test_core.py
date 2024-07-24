@@ -355,14 +355,9 @@ def test_max_concurrent_trials(name: str, searcher_cfg: str) -> None:
     with tempfile.NamedTemporaryFile() as tf:
         with open(tf.name, "w") as f:
             util.yaml_safe_dump(config_obj, f)
-        experiment_id = exp.create_experiment(sess, tf.name, conf.fixtures_path("no_op"))
+        experiment_id = exp.create_experiment(sess, tf.name, conf.fixtures_path("no_op"), [])
 
-        exp.wait_for_experiment_state(
-            sess,
-            experiment_id,
-            bindings.experimentv1State.RUNNING,
-        )
-
+    try:
         exp.wait_for_experiment_active_workload(sess, experiment_id)
         trials = exp.wait_for_at_least_n_trials(sess, experiment_id, 1)
         assert len(trials) == 1, trials
@@ -377,10 +372,10 @@ def test_max_concurrent_trials(name: str, searcher_cfg: str) -> None:
         exp.pause_experiment(sess, experiment_id)
 
         # Make sure that there were never more than 2 total trials created.
-        trials = exp.wait_for_at_least_n_trials(sess, experiment_id, 2, 30)
+        trials = exp.wait_for_at_least_n_trials(sess, experiment_id, 2)
         assert len(trials) == 2, trials
-
-        exp.kill_single(sess, experiment_id)
+    finally:
+        exp.kill_experiments(sess, [experiment_id], -1)
 
 
 @pytest.mark.e2e_cpu
