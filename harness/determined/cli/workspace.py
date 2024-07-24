@@ -46,6 +46,37 @@ def get_workspace_names(session: api.Session) -> Dict[int, str]:
     return mapping
 
 
+def render_user_group_rolenames(
+    resp: Sequence[bindings.v1GetGroupsAndUsersAssignedToWorkspaceResponse], is_csv: bool
+) -> None:
+    group_map = {}
+    user_map = {}
+    values = []
+
+    if resp.groups.count != 0:
+        for g in resp.groups:
+            group_map[g.groupId] = g.name
+
+    if resp.usersAssignedDirectly.count != 0:
+        for u in resp.usersAssignedDirectly:
+            user_map[u.id] = u.username
+
+    if resp.assignments.count != 0:
+        for assignment in resp.assignments:
+            role_name = assignment.role.name
+
+            for group_assignment in assignment.groupRoleAssignments:
+                value = [group_map[group_assignment.groupId], "G", role_name]
+                values.append(value)
+
+            for user_assignment in assignment.userRoleAssignments:
+                value = [user_map[user_assignment.userId], "U", role_name]
+                values.append(value)
+
+    headers = ["User/Group Name", "U/G", "Role Name"]
+    render.tabulate_or_csv(headers, values, is_csv)
+
+
 def render_workspaces(
     workspaces: Sequence[bindings.v1Workspace], from_list_api: bool = False
 ) -> None:
@@ -145,6 +176,21 @@ def list_pools(args: argparse.Namespace) -> None:
         values=[[args.workspace_name, pools_str]],
         as_csv=False,
     )
+
+
+def list_workspace_members(args: argparse.Namespace) -> None:
+    sess = cli.setup_session(args)
+    w = api.workspace_by_name(sess, args.workspace_name)
+    resp = bindings.get_GetGroupsAndUsersAssignedToWorkspace(sess, workspaceId=w.id)
+
+    if args.json:
+        render.print_json(resp.to_json())
+    elif args.yaml:
+        print(util.yaml_safe_dump(resp.to_json(), default_flow_style=False))
+    elif args.csv:
+        render_user_group_rolenames(resp, True)
+    else:
+        render_user_group_rolenames(resp, False)
 
 
 def _parse_agent_user_group_args(args: argparse.Namespace) -> Optional[bindings.v1AgentUserGroup]:
@@ -373,6 +419,21 @@ args_description = [
                 "list the resource pools available to a workspace",
                 [
                     cli.Arg("workspace_name", type=str, help="name of the workspace"),
+                ],
+            ),
+            cli.Cmd(
+                "list-members",
+                list_workspace_members,
+                "list users/user-groups members of a workspace and their roles",
+                [
+                    cli.Arg("workspace_name", type=str, help="name of the workspace"),
+                    cli.Group(
+                        cli.output_format_args["json"],
+                        cli.output_format_args["yaml"],
+                        cli.output_format_args["table"],
+                        cli.output_format_args["csv"],
+                    ),
+                    *cli.make_pagination_args(limit=1000),
                 ],
             ),
             cli.Cmd(
