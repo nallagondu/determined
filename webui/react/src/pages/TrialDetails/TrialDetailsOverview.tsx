@@ -2,6 +2,7 @@ import Spinner from 'hew/Spinner';
 import { Loadable } from 'hew/utils/loadable';
 import React, { useCallback, useMemo } from 'react';
 
+import Metadata from 'components/Metadata';
 import { terminalRunStates } from 'constants/states';
 import useMetricNames from 'hooks/useMetricNames';
 import usePermissions from 'hooks/usePermissions';
@@ -106,6 +107,7 @@ const TrialDetailsOverview: React.FC<Props> = ({ experiment, trial }: Props) => 
           ) : (
             <Spinner spinning />
           )}
+          <Metadata trial={trial} />
         </>
       ) : null}
     </>
